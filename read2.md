@@ -1,6 +1,13 @@
 ### Stress granules are of interest for four reasons. First, stress granule formation and dynamics can affect mRNA localization, translation and degradation, as well as signaling pathways and antiviral responses. Second, stress granules share many components with maternal mRNP and neuronal granules suggesting they reveal a conserved mechanism of mRNP compartmentalization. Third, mutations that increase stress granule formation and/or limit stress granule clearance are causative in some neurodegenerative diseases
 
 
+# We will Use:
+
+- Alzheimers: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE162873
+
+- ALS/Neurodegenerative: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE233588
+
+
 # Usable:
 ### *TOOLS: GEOquery used to get data directly [link](http://127.0.0.1:25471/library/GEOquery/doc/GEOquery.html) 
 ### Aging of neurons: neurodegenerative
