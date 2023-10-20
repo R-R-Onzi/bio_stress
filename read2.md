@@ -30,3 +30,6 @@
 
 ### Evidence of immune response and inflammation have been identified as genetic risk factors for late-onset Alzheimer's disease.
 #### [link4](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE143951)
+
+### ALS/FTD dataset with control and disease group(TDP-43 knock-down)
+#### [link5](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE233588)
