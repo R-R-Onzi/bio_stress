@@ -5,28 +5,35 @@
 ### *TOOLS: GEOquery used to get data directly [link](http://127.0.0.1:25471/library/GEOquery/doc/GEOquery.html) 
 ### Aging of neurons: neurodegenerative
 
-#### [link1](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE241430)
+[link1](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE241430)
 
 ### Cholesterol: neurodegenerative
 
-#### [link2](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE240960)
+[link2](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE240960)
 
 
 # Use as last resort:
 
 ### ALS genes quantity
 
-#### [link1](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE23429)
+[link1](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE23429)
 
 ### neurodegenerative
 
-#### [link2](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE239367)
+[link2](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE239367)
 
 
 
 ### iron: neurodegenerative
 
-#### [link3](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE240204)
+[link3](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE240204)
 
 ### Evidence of immune response and inflammation have been identified as genetic risk factors for late-onset Alzheimer's disease.
-#### [link4](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE143951)
+
+[link4](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE143951)
+
+### Stress granules - lot of data: need to manipulate
+ 
+[link5](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE223295)
+
+
