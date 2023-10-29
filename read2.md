@@ -9,8 +9,9 @@
 
 
 # Usable:
-### *TOOLS: GEOquery used to get data directly [link](http://127.0.0.1:25471/library/GEOquery/doc/GEOquery.html) 
+### TOOLS: GEOquery used to get data directly [link](http://127.0.0.1:25471/library/GEOquery/doc/GEOquery.html) 
 ### Aging of neurons: neurodegenerative
+### DATASET THAT SHOWS DIFF EXPRESSION IN STRESS VS NO STRESS OF Human Bone Osteosarcoma Epithelial Cells https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE119977
 
 [link1](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE241430)
 
