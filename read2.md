@@ -1,5 +1,9 @@
 ### Stress granules are of interest for four reasons. First, stress granule formation and dynamics can affect mRNA localization, translation and degradation, as well as signaling pathways and antiviral responses. Second, stress granules share many components with maternal mRNP and neuronal granules suggesting they reveal a conserved mechanism of mRNP compartmentalization. Third, mutations that increase stress granule formation and/or limit stress granule clearance are causative in some neurodegenerative diseases
 
+# marc told me to save it:
+
+https://pubmed.ncbi.nlm.nih.gov/31626953/
+
 
 # We will Use:
 
