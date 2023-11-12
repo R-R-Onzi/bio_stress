@@ -10,12 +10,19 @@ BiocManager::install("DESeq2")
 BiocManager::install("apeglm")
 BiocManager::install("ashr")
 BiocManager::install("IHW")
+BiocManager::install("vsn")
+BiocManager::install("pheatmap")
+
+
 
 library(DESeq2)
 library(GEOquery)
 library(dplyr)
 library(apeglm)
 library(ashr)
+library(vsn)
+library(pheatmap)
+
 
 setwd("./") 
 
@@ -129,3 +136,25 @@ mcols(res)$description
 # save
 
 write.csv(as.data.frame(resOrdered), file="sALS_healthy.csv")
+
+# transformation
+
+vsd <- vst(dds, blind=FALSE)
+rld <- rlog(dds, blind=FALSE)
+head(assay(vsd), 3)
+
+# this gives log2(n + 1)
+ntd <- normTransform(dds)
+library("vsn")
+meanSdPlot(assay(ntd))
+
+meanSdPlot(assay(vsd))
+
+meanSdPlot(assay(rld))
+# why
+library("pheatmap")
+select <- order(rowMeans(counts(dds,normalized=TRUE)),
+                decreasing=TRUE)[1:20]
+df <- as.data.frame(colData(dds)[,c("condition","geo_accession")])
+pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df)
