@@ -11,6 +11,9 @@ BiocManager::install("ashr")
 BiocManager::install("IHW")
 BiocManager::install("vsn")
 BiocManager::install("pheatmap")
+BiocManager::install("sparseMatrixStats")
+BiocManager::install("SparseArray")
+BiocManager::install("DelayedMatrixStats")
 
 
 library("ggplot2")
@@ -24,6 +27,10 @@ library(pheatmap)
 library("IHW")
 library("vsn")
 library("pheatmap")
+library("sparseMatrixStats")
+library("SparseArray")
+library("DelayedMatrixStats")
+
 
 setwd("./") 
 
@@ -80,6 +87,9 @@ res <- results(dds, alpha=0.1)
 
 resultsNames(dds)
 
+keep<-rowSums(counts(dds))>=10
+dds<- dds[keep,]
+
 resLFC <- lfcShrink(dds, coef="condition_sALS_vs_Healthy.control", res = res)
 
 res_shrunken_df <- data.frame(resLFC)
@@ -90,6 +100,8 @@ res_top <- res_DF %>%
   arrange(desc(abs(log2FoldChange))) %>%
   slice(1:10) 
 
+class(res_top)
+
 sig_genes <- res_top %>% filter(padj<0.1)
 
 # pvalues 
@@ -97,6 +109,8 @@ sig_genes <- res_top %>% filter(padj<0.1)
 resOrdered <- res[order(sig_genes$pvalue),]
 
 sum(res$padj < 0.05, na.rm=TRUE)
+
+DESeqResults(sig_genes)
 # pvalues over .1
 
 res05 <- results(dds, alpha=0.1)
