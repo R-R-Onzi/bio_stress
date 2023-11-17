@@ -5,7 +5,6 @@ BiocManager::install()
 
 BiocManager::install("DESeq2")
 BiocManager::install("GEOquery")
-BiocManager::install("DESeq2")
 
 BiocManager::install("apeglm")
 BiocManager::install("ashr")
@@ -14,7 +13,7 @@ BiocManager::install("vsn")
 BiocManager::install("pheatmap")
 
 
-
+library("ggplot2")
 library(DESeq2)
 library(GEOquery)
 library(dplyr)
@@ -22,11 +21,13 @@ library(apeglm)
 library(ashr)
 library(vsn)
 library(pheatmap)
-
+library("IHW")
+library("vsn")
+library("pheatmap")
 
 setwd("./") 
 
-df <- read.delim("GSE234297_gene_raw_counts.txt",header=T)
+df <- read.delim("GSE234297_gene_raw_counts.tsv",header=T)
 
 meta_data <- getGEO("GSE234297")
 
@@ -55,44 +56,58 @@ coldata <- new_df %>%
 condition <- new_df %>%
   select(condition)
 
+coldata$condition <- factor(coldata$condition)
+coldata$condition <- relevel(coldata$condition, ref="Healthy control")
+
+
 dds <- DESeqDataSetFromMatrix(countData = round(cts),
                               colData = coldata,
                               design = ~ condition)
 
 # keep only rows that have a count of at least 10 for a minimal number of samples
 
-smallestGroupSize <- 3
-keep <- rowSums(counts(dds) >= 10) >= smallestGroupSize
-dds <- dds[keep,]
-
-dds$condition <- factor(dds$condition, levels = c("sALS","Healthy control"))
+keep<-rowSums(counts(dds))>=10
+dds<- dds[keep,]
 
 # Differential expression analysis
 dds <- DESeq(dds)
-res <- results(dds)
+
+MA_plot <- plotMA(dds)
+
+res <- results(dds, alpha=0.1)
 
 #logfolds
 
 resultsNames(dds)
 
-resLFC <- lfcShrink(dds, coef="condition_Healthy.control_vs_sALS", type="apeglm")
+resLFC <- lfcShrink(dds, coef="condition_sALS_vs_Healthy.control", res = res)
 
+res_shrunken_df <- data.frame(resLFC)
+res_DF <- data.frame(res)
+res_DF <- res_DF %>% filter(padj<0.1)
+
+res_top <- res_DF %>%
+  arrange(desc(abs(log2FoldChange))) %>%
+  slice(1:10) 
+
+sig_genes <- res_top %>% filter(padj<0.1)
 
 # pvalues 
 
-resOrdered <- res[order(res$pvalue),]
+resOrdered <- res[order(sig_genes$pvalue),]
 
-sum(res$padj < 0.1, na.rm=TRUE)
+sum(res$padj < 0.05, na.rm=TRUE)
 # pvalues over .1
 
 res05 <- results(dds, alpha=0.1)
-
+res_sep <- results(dds,alpha=0.05, lfcThreshold = .7, altHypothesis="greaterAbs")
+res_sep
 
 # plots
-#normal
-plotMA(res, ylim=c(-2,2))
+# normal
+plotMA(resOrdered, ylim=c(-2,2))
 # log 
-plotMA(resLFC, ylim=c(-2,2))
+plotMA(resOrdered, ylim=c(-2,2))
 
 
 # LFC shrinkage
@@ -110,7 +125,7 @@ plotMA(resAsh, xlim=xlim, ylim=ylim, main="ashr")
 
 #IHW
 # works better?
-library("IHW")
+
 resIHW <- results(dds, filterFun=ihw)
 summary(resIHW)
 sum(resIHW$padj < 0.1, na.rm=TRUE)
@@ -119,12 +134,16 @@ metadata(resIHW)$ihwResult
 
 #Plot counts
 
-plotCounts(dds, gene=which.min(res$padj), intgroup="condition")
+d <- plotCounts(res_shrunken, gene=which.min(res_shrunken$log2FoldChange), intgroup="condition", returnData=TRUE)
+
+ggplot(d, aes(x=condition, y=count)) + 
+  geom_point(position=position_jitter(w=0.1,h=0)) + 
+  scale_y_log10(breaks=c(25,100,400))
 
 
-d <- plotCounts(dds, gene=which.min(res$padj), intgroup="condition", 
+d <- plotCounts(res_shrunken, gene=which.max(sig_genes$log2FoldChange), intgroup="condition", 
                 returnData=TRUE)
-library("ggplot2")
+
 ggplot(d, aes(x=condition, y=count)) + 
   geom_point(position=position_jitter(w=0.1,h=0)) + 
   scale_y_log10(breaks=c(25,100,400))
@@ -145,16 +164,28 @@ head(assay(vsd), 3)
 
 # this gives log2(n + 1)
 ntd <- normTransform(dds)
-library("vsn")
+
 meanSdPlot(assay(ntd))
 
 meanSdPlot(assay(vsd))
 
 meanSdPlot(assay(rld))
 # why
-library("pheatmap")
+
 select <- order(rowMeans(counts(dds,normalized=TRUE)),
                 decreasing=TRUE)[1:20]
+
 df <- as.data.frame(colData(dds)[,c("condition","geo_accession")])
 pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
          cluster_cols=FALSE, annotation_col=df)
+
+volcano <-ggplot(res_DF , aes(x =log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = ifelse(padj < 0.05, "red", "brown")), size = 2) +
+  scale_color_manual(values = c("brown", "red")) +
+  theme_minimal() +
+  labs(
+    title = 6,
+    x = "Log2FoldChange",
+    y = "-Log10(p-value)"
+  )
+print(volcano)
