@@ -1,0 +1,152 @@
+```{r} 
+
+library(DESeq2)
+library(ggplot2)
+library(tidyverse)
+library(GEOquery)
+library(RColorBrewer)
+
+library(pheatmap)
+
+```
+```{r}
+TDP_data <- getGEO("GSE128647")
+df<- pData(phenoData(TDP_data[[1]]))
+
+original_values <- c("GFP", "WT","FL","R151A","D247A")
+replacement_values <- c("Negative control", "TDP43 wild type", "2 phe mutations in RRM1","Arg mutation in RRM1 to Ala","Asp mutation in RRM2 to Ala")
+
+df$source_name_ch1 <- ifelse(df$source_name_ch1 %in% original_values, replacement_values[match(df$source_name_ch1, original_values)], df$source_name_ch1)
+new_df <-data.frame(Condition = df$source_name_ch1, Sample=rownames(df))
+rownames(new_df)<-df$title
+
+
+```
+
+Reading the raw Data and factoring the condition feature in the metadata.
+```{r}
+raw_data <- read.table("GSE128647_htseq_raw_counts.txt",header=T)
+colnames(raw_data) <- sub("^Sample_", "", colnames(raw_data))
+rownames(raw_data) <- raw_data$id
+raw_data <- raw_data[,-1]
+all(colnames(raw_data) %in% rownames(new_df)) #True metadata matches raw data
+all(colnames(raw_data)==rownames(new_df)) #True metadata has same order as raw data
+new_df$Condition<-factor(new_df$Condition) #factoring
+new_df$Condition<-relevel(new_df$Condition,ref="TDP43 wild type")
+str(new_df$Condition)
+
+
+```
+# Preprocessing steps:
+
+-Creating DESeq object
+
+```{r}
+dds<- DESeqDataSetFromMatrix(countData =raw_data,
+                       colData = new_df,
+                       design= ~ Condition)
+```
+- filtering out rows with low counts across all samples before normalization
+```{r}
+
+keep<-rowSums(counts(dds))>=10
+dds<- dds[keep,]
+```
+- Running DESeq and obtaining the normalized counts based on the size factor
+```{r}
+dds <- DESeq(dds)
+
+
+res<-results(dds,contrast=c('Condition',"TDP43 wild type","2 phe mutations in RRM1"),alpha=0.05)
+
+```
+- Results:
+Genes with p adjusted values greater than 0.05 are disregarded in the analysis
+The PCA plot highlights the contrast between samples with wild type TDP-43 and samples with mutated versions of TDP-43. Moreover, samples with mutations in RRM1 are highly similar.
+```{r}
+MA_plot <- plotMA(dds)
+
+
+
+vsd <- vst(dds, blind=FALSE) #obtaining the variation stabilizing transformations that transforms the variance to become more normal (allowing more spread) and independent from the mean 
+#PCA
+plotPCA(vsd, intgroup=c("Condition"))
+```
+```{r}
+#HeatMap similarities between samples
+
+sampledist <- dist(t(assay(vsd)))
+sampledist_matrix <-as.matrix(sampledist)
+colnames(sampledist_matrix)<- new_df$Condition
+rownames(sampledist_matrix)<- new_df$Condition
+colors<- colorRampPalette(rev(brewer.pal(9,"Blues")))(255)
+pheatmap(sampledist_matrix,clustering_distance_rows=sampledist, clustering_distance_cols=sampledist,col=colors)
+
+```
+```{r}
+library(dplyr)
+# conditions vs TDP-43 wild type!!
+
+par(mar = c(5, 4, 4, 2) + 0.1)
+all_genes <-list()
+for (i in resultsNames(dds)){ #loop and get results for all conditions
+  if (i != 'Intercept'){
+    res<- results(dds,name=i,alpha=0.05)
+    # shrink the result to obtain more accurate values
+    res_shrunken<-lfcShrink(dds,coef=i,type='apeglm',res=res)
+    res_shrunken_df<- data.frame(res_shrunken)
+    sig_genes<- res_shrunken_df %>% filter(padj<=0.05, abs(log2FoldChange)>1) #filtering significant genes
+    # Get the top 10 rows with the greatest absolute values of log2FoldChange
+    top_10_genes <- sig_genes %>%
+                 arrange(desc(abs(log2FoldChange))) %>%  # Arrange by absolute log2FoldChange in descending order
+                top_n(10)  # Select the top 10 rows
+    pdf(file = paste0("plot_", i, ".pdf"), width = 10, height = 6)
+    plotCounts(dds, gene = row.names(top_10_genes)[1], intgroup = 'Condition', normalized = TRUE) # plot the most differentiated gene in each condition against all conditions
+    dev.off() #close pdf device
+    all_genes[[i]]<-list(top10 =top_10_genes,res=res_shrunken_df)
+   
+   
+  }
+  
+}
+```
+
+```{r}
+#Volcano plots
+for (j in resultsNames(dds)){
+if (j!="Intercept"){
+print(j)
+#gene=row.names(all_genes[[j]]$res)
+  
+all_genes[[j]]$res <- all_genes[[j]]$res %>%
+  mutate(diffexp = ifelse(log2FoldChange > 0, "overexpressed", "underexpressed"))%>% filter(!is.na(padj))
+
+
+volcano <-ggplot(all_genes[[j]]$res, aes(x =log2FoldChange, y = -log10(padj),col=diffexp,label = gene)) +
+ 
+  theme_minimal() +
+  labs(
+    title = j,
+    x = "Log2FoldChange",
+    y = "-Log10(p-value)"
+  )
+plot(volcano+geom_text(check_overlap = TRUE))
+volcano_ <-ggplot(all_genes[[j]]$res, aes(x =log2FoldChange, y = -log10(padj),col=diffexp))+
+  geom_point(aes(color = ifelse(padj  < 0.05  & diffexp == "overexpressed" , "blue",ifelse(diffexp == "underexpressed" & padj < 0.05, "red", "black"))), size = 2) +
+  
+  
+  scale_color_manual(values = c("black", "red",'blue'),
+                     labels = c("Not Significant", "Overexpressed (p < 0.05)", "Underexpressed (p < 0.05)"))
+   theme_minimal() +
+  labs(
+    title = j,
+    x = "Log2FoldChange",
+    y = "-Log10(p-value)"
+  )
+plot(volcano_)
+}
+}
+
+```
+
+
