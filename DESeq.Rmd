@@ -96,14 +96,14 @@ for (i in resultsNames(dds)){ #loop and get results for all conditions
     res_shrunken<-lfcShrink(dds,coef=i,type='apeglm',res=res)
     res_shrunken_df<- data.frame(res_shrunken)
     sig_genes<- res_shrunken_df %>% filter(padj<=0.05, abs(log2FoldChange)>1) #filtering significant genes
-    # Get the top 10 rows with the greatest absolute values of log2FoldChange
-    top_10_genes <- sig_genes %>%
+    # Get the top 15 rows with the greatest absolute values of log2FoldChange
+    top_15_genes <- sig_genes %>%
                  arrange(desc(abs(log2FoldChange))) %>%  # Arrange by absolute log2FoldChange in descending order
                 top_n(15)  # Select the top 15 genes
     pdf(file = paste0("plot_", i, ".pdf"), width = 10, height = 6)
-    plotCounts(dds, gene = row.names(top_10_genes)[1], intgroup = 'Condition', normalized = TRUE) # plot the most differentiated gene in each condition against all conditions
+    plotCounts(dds, gene = row.names(top_15_genes)[1], intgroup = 'Condition', normalized = TRUE) # plot the most differentiated gene in each condition against all conditions
     dev.off() #close pdf device
-    all_genes[[i]]<-list(top10 =top_10_genes,res=res_shrunken_df)
+    all_genes[[i]]<-list(top15 =top_15_genes,res=res_shrunken_df)
    
    
   }
