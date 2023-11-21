@@ -1,11 +1,14 @@
 if (!require("BiocManager", quietly = TRUE))
   install.packages("BiocConductor")
 
-BiocManager::install()
+install.packages("remotes")
+remotes::install_github("vitkl/regNETcmap")
 
+install.packages("igraph")
+BiocManager::install("biomaRt")
 BiocManager::install("DESeq2")
 BiocManager::install("GEOquery")
-
+BiocManager::install("EnrichmentBrowser")
 BiocManager::install("apeglm")
 BiocManager::install("ashr")
 BiocManager::install("IHW")
@@ -14,8 +17,13 @@ BiocManager::install("pheatmap")
 BiocManager::install("sparseMatrixStats")
 BiocManager::install("SparseArray")
 BiocManager::install("DelayedMatrixStats")
+BiocManager::install("clusterProfiler")
 
+require('org.Mm.eg.db')
 
+library(biomaRt)
+library("regNETcmap")
+library("igraph")
 library("ggplot2")
 library(DESeq2)
 library(GEOquery)
@@ -30,6 +38,8 @@ library("pheatmap")
 library("sparseMatrixStats")
 library("SparseArray")
 library("DelayedMatrixStats")
+library(clusterProfiler)
+library(EnrichmentBrowser)
 
 
 setwd("./") 
@@ -53,6 +63,7 @@ rownames(new_df)<-new_df$title
 
 rownames(df)<-df$EntrezGeneID 
 
+sig_genes <- mapIds(org.Hs.eg.db, keys = df, column = "SYMBOL", keytype = "ENSEMBL")
 
 cts <- df %>%
   select(-EntrezGeneID)
@@ -65,6 +76,13 @@ condition <- new_df %>%
 
 coldata$condition <- factor(coldata$condition)
 coldata$condition <- relevel(coldata$condition, ref="Healthy control")
+
+ensembl <- useMart(biomart = "www.ensembl.org", dataset="hsapiens_gene_ensembl")
+
+banana <- getBM(attributes='hgnc_symbol', 
+      filters = 'ensembl_gene_id', 
+      values = charg2, 
+      mart = ensembl)
 
 
 dds <- DESeqDataSetFromMatrix(countData = round(cts),
@@ -106,11 +124,11 @@ sig_genes <- res_top %>% filter(padj<0.1)
 
 # pvalues 
 
-resOrdered <- res[order(sig_genes$pvalue),]
+resOrdered <- res[order(sig_genes$log2FoldChange),]
 
 sum(res$padj < 0.05, na.rm=TRUE)
 
-DESeqResults(sig_genes)
+sig_genes<-DESeqResults(sig_genes)
 # pvalues over .1
 
 res05 <- results(dds, alpha=0.1)
@@ -148,14 +166,14 @@ metadata(resIHW)$ihwResult
 
 #Plot counts
 
-d <- plotCounts(res_shrunken, gene=which.min(res_shrunken$log2FoldChange), intgroup="condition", returnData=TRUE)
+d <- plotCounts(df, gene=which.min(coldata$log2FoldChange), intgroup="condition", returnData=TRUE)
 
 ggplot(d, aes(x=condition, y=count)) + 
   geom_point(position=position_jitter(w=0.1,h=0)) + 
   scale_y_log10(breaks=c(25,100,400))
 
 
-d <- plotCounts(res_shrunken, gene=which.max(sig_genes$log2FoldChange), intgroup="condition", 
+d <- plotCounts(sig_genes, gene=which.max(sig_genes$log2FoldChange), intgroup="condition", 
                 returnData=TRUE)
 
 ggplot(d, aes(x=condition, y=count)) + 
@@ -193,7 +211,7 @@ df <- as.data.frame(colData(dds)[,c("condition","geo_accession")])
 pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
          cluster_cols=FALSE, annotation_col=df)
 
-volcano <-ggplot(res_DF , aes(x =log2FoldChange, y = -log10(padj))) +
+volcano <-ggplot(df , aes(x =log2FoldChange, y = -log10(padj))) +
   geom_point(aes(color = ifelse(padj < 0.05, "red", "brown")), size = 2) +
   scale_color_manual(values = c("brown", "red")) +
   theme_minimal() +
@@ -203,3 +221,17 @@ volcano <-ggplot(res_DF , aes(x =log2FoldChange, y = -log10(padj))) +
     y = "-Log10(p-value)"
   )
 print(volcano)
+
+gseKEGG()
+
+vsd <- vst(dds, blind=FALSE)
+rld <- rlog(dds, blind=FALSE)
+head(assay(vsd), 3)
+
+mat <- assay(vsd)
+mm <- model.matrix(~condition, colData(vsd))
+mat <- limma::removeBatchEffect(mat, batch=vsd$batch, design=mm)
+assay(vsd) <- mat
+plotPCA(vsd)
+
+
