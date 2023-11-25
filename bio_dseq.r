@@ -1,9 +1,15 @@
 if (!require("BiocManager", quietly = TRUE))
   install.packages("BiocConductor")
 
+install.packages("terra")
 install.packages("remotes")
+install.packages("raster")
+install.packages("conflicted")
+install.packages("gprofiler2")
 remotes::install_github("vitkl/regNETcmap")
-
+install.packages("raster")
+install.packages("conflicted")
+BiocManager::install("EnsDb.Hsapiens.v79")
 install.packages("igraph")
 BiocManager::install("biomaRt")
 BiocManager::install("DESeq2")
@@ -21,27 +27,34 @@ BiocManager::install("clusterProfiler")
 
 require('org.Mm.eg.db')
 
-library(biomaRt)
+library("biomaRt")
 library("regNETcmap")
 library("igraph")
 library("ggplot2")
-library(DESeq2)
-library(GEOquery)
-library(dplyr)
-library(apeglm)
-library(ashr)
-library(vsn)
-library(pheatmap)
+
+
+library("apeglm")
+library("ashr")
+library("vsn")
+library("pheatmap")
 library("IHW")
 library("vsn")
 library("pheatmap")
+
+library("DelayedMatrixStats")
+library("clusterProfiler")
+library("EnrichmentBrowser")
+library("regNETcmap")
+
+library("raster")
+library("conflicted")
+
+
+library("DESeq2")
+library("GEOquery")
 library("sparseMatrixStats")
 library("SparseArray")
-library("DelayedMatrixStats")
-library(clusterProfiler)
-library(EnrichmentBrowser)
-
-
+library("dplyr")
 setwd("./") 
 
 df <- read.delim("GSE234297_gene_raw_counts.tsv",header=T)
@@ -49,8 +62,7 @@ df <- read.delim("GSE234297_gene_raw_counts.tsv",header=T)
 meta_data <- getGEO("GSE234297")
 
 meta_data <- pData(phenoData(meta_data[[1]]))
-new_df <- meta_data %>%
-  select(title,geo_accession,characteristics_ch1.1)
+new_df <- meta_data %>% select(title,geo_accession,characteristics_ch1.1)
 
 
 new_df$title<-sub("PeripheralBlood_", "", new_df$title)
@@ -62,8 +74,33 @@ rownames(new_df)<-new_df$title
 
 
 rownames(df)<-df$EntrezGeneID 
+library(org.Mm.eg.db)
+library("EnsDb.Hsapiens.v79")
+library("gprofiler2")
+i <- 1
+if (i<=46025)
+{
+  as.character(df$EntrezGeneID[1])
+  case_when(
+    class == 4 or Metro_status == 'Metro' ~ '#d62023',
+    class == 4 or Metro_status == 'Non-metro' ~ '#d68182',
+    class == 3 or Metro_status == 'Metro' ~ '#fc9126',
+    class == 3 | Metro_status == 'Non-metro' ~ '#fcc48b',
+    class == 2 | Metro_status == 'Metro' ~ '#83d921',
+    class == 2 | Metro_status == 'Non-metro' ~ '#abd977',
+    class == 1 
+  )
+}
+s2 <- paste0("ENSG0000000", c(df$EntrezGeneID))
+ass <- gconvert(df$EntrezGeneID,organism="hsapiens",target="ENTREZGENE",filter_na = F)$target
+gs <- list(s1 = names(se), s2 = s2)
+rez <- idMap(gs, org = "hsa", from = "ENSEMBL", to = "SYMBOL")
+names(se) <- paste0("ENSG00000", c(df$EntrezGeneID))
+a <-idMap(se, org = "hsa")
 
-sig_genes <- mapIds(org.Hs.eg.db, keys = df, column = "SYMBOL", keytype = "ENSEMBL")
+tryit <- getBM(attributes = c("ensembl_gene_id", 
+                                     "hgnc_symbol"),
+                      mart = useMart("ensembl", dataset = "hsapiens_gene_ensembl"))
 
 cts <- df %>%
   select(-EntrezGeneID)
