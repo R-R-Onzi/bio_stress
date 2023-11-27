@@ -71,8 +71,9 @@ dds <- DESeq(dds)
 
 MA_plot <- plotMA(dds)
 
-res1 <- results(dds, alpha=0.05)
-res2 <- results(dds, alpha=0.05)
+
+res1 <- results(dds, alpha=0.05,name="condition_C9_vs_C9GC")
+res2 <- results(dds, alpha=0.05,name="condition_C9KO_vs_C9GC")
 
 #logfolds
 
@@ -81,22 +82,37 @@ resultsNames(dds)
 keep<-rowSums(counts(dds))>=10
 dds<- dds[keep,]
 
-resLFC1 <- lfcShrink(dds, coef="condition_C9KO_vs_C9GC", res = res1)
+resLFC1 <- lfcShrink(dds, coef="condition_C9_vs_C9GC", res = res1)
+
+res_DF1 <- data.frame(res1)
+sig_genes1 <- res_DF1 %>% filter(padj<0.05)
 
 
-res_DF <- data.frame(res1)
-sig_genes <- res_DF %>% filter(padj<0.05)
+resLFC2 <- lfcShrink(dds, coef="condition_C9KO_vs_C9GC", res = res2)
+
+res_DF2 <- data.frame(res2)
+sig_genes2 <- res_DF2 %>% filter(padj<0.05)
 
 # pvalues 
 
-resOrdered <- res1[order(sig_genes$log2FoldChange),]
+resOrdered1 <- res1[order(sig_genes1$log2FoldChange),]
 
 sum(res1$padj < 0.05, na.rm=TRUE)
 
-sig_genes<-DESeqResults(sig_genes)
+sig_genes1<-DESeqResults(sig_genes1)
+
+
+resOrdered2 <- res2[order(sig_genes2$log2FoldChange),]
+
+sum(res2$padj < 0.05, na.rm=TRUE)
+
+sig_genes2<-DESeqResults(sig_genes2)
 
 # normal
-plotMA(resOrdered, ylim=c(-2,2))
+plotMA(resOrdered1, ylim=c(-2,2))
+
+plotMA(resOrdered2, ylim=c(-2,2))
+
 
 # why
 
@@ -107,17 +123,35 @@ ntd <- normTransform(dds)
 select <- order(rowMeans(counts(dds,normalized=TRUE)),
                 decreasing=TRUE)[1:20]
 
+library("ggplot2")
+
 df <- as.data.frame(colData(dds)[,c("condition","geo_accession")])
 
 pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
          cluster_cols=FALSE, annotation_col=df)
 
-volcano <- ggplot(res_DF , aes(x =log2FoldChange, y = -log10(padj))) +
-  geom_point(aes(color = ifelse(padj < 0.05, "red", "brown")), size = 1) +
-  scale_color_manual(values = c("brown", "red")) +
+volcano <- ggplot(res_DF1 , aes(x =log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color =  ifelse(padj  < 0.05  & log2FoldChange> 0 , "blue",ifelse(log2FoldChange< 0 & padj < 0.05, "red", "black")), size=.1)) +
+  xlim(-5,8) +
+  ylim(0,120) +
   theme_minimal() +
   labs(
-    title = 6,
+    title = "condition_C9_vs_C9GC",
+    x = "Log2FoldChange",
+    y = "-Log10(p-value)"
+  )
+
+print(volcano)
+
+
+volcano <- ggplot(res_DF2 , aes(x =log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = ifelse(padj < 0.05, "red", "brown")), size = .1) +
+  scale_color_manual(values = c("brown", "red")) +
+  xlim(-5,5) +
+  ylim(0,100) +
+  theme_minimal() +
+  labs(
+    title = "condition_C9KO_vs_C9GC",
     x = "Log2FoldChange",
     y = "-Log10(p-value)"
   )
@@ -132,3 +166,85 @@ mm <- model.matrix(~condition, colData(vsd))
 mat <- limma::removeBatchEffect(mat, batch=vsd$batch, design=mm)
 assay(vsd) <- mat
 plotPCA(vsd)
+
+boxplot(log10(assays(dds)[["cooks"]]), range=0, las=2)
+
+plotDispEsts(dds)
+
+# map dispersion REMOVED OUTLIERS
+
+ddsCustom <- dds
+useForMedian <- mcols(ddsCustom)$dispGeneEst > 1e-7
+medianDisp <- median(mcols(ddsCustom)$dispGeneEst[useForMedian],
+                     na.rm=TRUE)
+dispersionFunction(ddsCustom) <- function(mu) medianDisp
+ddsCustom <- estimateDispersionsMAP(ddsCustom)
+
+res1 <- results(ddsCustom, alpha=0.05,name="condition_C9_vs_C9GC")
+res2 <- results(ddsCustom, alpha=0.05,name="condition_C9KO_vs_C9GC")
+
+metadata(res1)$alpha
+
+
+
+metadata(res1)$filterThreshold
+
+plot(metadata(res1)$filterNumRej, 
+     type="b", ylab="number of rejections",
+     xlab="quantiles of filter")
+lines(metadata(res1)$lo.fit, col="red")
+
+abline(v=metadata(res1)$filterTheta)
+
+resNoFilt <- results(dds, independentFiltering=FALSE)
+addmargins(table(filtering=(res1$padj < .1),
+                 noFiltering=(resNoFilt$padj < .1)))
+
+#logfolds
+
+resultsNames(ddsCustom)
+
+keep<-rowSums(counts(ddsCustom))>=10
+ddsCustom<- dds[keep,]
+
+resLFC1 <- lfcShrink(ddsCustom, coef="condition_C9_vs_C9GC", res = res1)
+
+res_DF1 <- data.frame(res1)
+sig_genes1 <- res_DF1 %>% filter(padj<0.05)
+
+
+resLFC2 <- lfcShrink(ddsCustom, coef="condition_C9KO_vs_C9GC", res = res2)
+
+res_DF2 <- data.frame(res2)
+sig_genes2 <- res_DF2 %>% filter(padj<0.05)
+
+# pvalues 
+
+resOrdered1 <- res1[order(sig_genes1$log2FoldChange),]
+
+sum(res1$padj < 0.05, na.rm=TRUE)
+
+sig_genes1<-DESeqResults(sig_genes1)
+
+
+resOrdered2 <- res2[order(sig_genes2$log2FoldChange),]
+
+sum(res2$padj < 0.05, na.rm=TRUE)
+
+sig_genes2<-DESeqResults(sig_genes2)
+
+# normal
+plotMA(resOrdered1, ylim=c(-2,2))
+
+plotMA(resOrdered2, ylim=c(-2,2))
+
+
+# why
+
+library("pheatmap")
+
+ntd <- normTransform(dds)
+
+select <- order(rowMeans(counts(dds,normalized=TRUE)),
+                decreasing=TRUE)[1:20]
+
