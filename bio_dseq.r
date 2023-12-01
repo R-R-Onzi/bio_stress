@@ -4,7 +4,7 @@ if (!require("BiocManager", quietly = TRUE))
 install.packages("terra")
 install.packages("remotes")
 install.packages("raster")
-install.packages("conflicted")
+BiocManager::install("biomaRt")
 install.packages("gprofiler2")
 remotes::install_github("vitkl/regNETcmap")
 install.packages("raster")
@@ -77,20 +77,7 @@ rownames(df)<-df$EntrezGeneID
 library(org.Mm.eg.db)
 library("EnsDb.Hsapiens.v79")
 library("gprofiler2")
-i <- 1
-if (i<=46025)
-{
-  as.character(df$EntrezGeneID[1])
-  case_when(
-    class == 4 or Metro_status == 'Metro' ~ '#d62023',
-    class == 4 or Metro_status == 'Non-metro' ~ '#d68182',
-    class == 3 or Metro_status == 'Metro' ~ '#fc9126',
-    class == 3 | Metro_status == 'Non-metro' ~ '#fcc48b',
-    class == 2 | Metro_status == 'Metro' ~ '#83d921',
-    class == 2 | Metro_status == 'Non-metro' ~ '#abd977',
-    class == 1 
-  )
-}
+
 s2 <- paste0("ENSG0000000", c(df$EntrezGeneID))
 ass <- gconvert(df$EntrezGeneID,organism="hsapiens",target="ENTREZGENE",filter_na = F)$target
 gs <- list(s1 = names(se), s2 = s2)

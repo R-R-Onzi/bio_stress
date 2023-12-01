@@ -1,10 +1,18 @@
+devtools::install_version("dbplyr", version = "2.3.4")
+
 library(stringr)
 library("DESeq2")
 library("GEOquery")
 library("dplyr")
+library("org.Hs.eg.db")
+library("conflicted")
+
 
 dft <- read.delim("4th/GSE143743_bfx1299.genecounts.csv",header=T)
 df <- read.delim("4th/GSE143743_bfx1299.genecounts.csv",header=T)
+
+conflicts_prefer(dplyr::select)
+conflicts_prefer(dplyr::filter)
 
 meta_data <- getGEO("GSE143743")
 df <- df[, -(2:6)]
@@ -75,6 +83,7 @@ MA_plot <- plotMA(dds)
 res1 <- results(dds, alpha=0.05,name="condition_C9_vs_C9GC")
 res2 <- results(dds, alpha=0.05,name="condition_C9KO_vs_C9GC")
 
+
 #logfolds
 
 resultsNames(dds)
@@ -114,7 +123,42 @@ plotMA(resOrdered1, ylim=c(-2,2))
 plotMA(resOrdered2, ylim=c(-2,2))
 
 
+#get gene ensemble id
+
+require("biomaRt")
+
+conflicts_prefer(biomaRt::select)
+
+mart <- useMart("ENSEMBL_MART_ENSEMBL")
+mart <- useDataset("hsapiens_gene_ensembl", mart)
+
+ens <- c("ENSG00000100601.5", "ENSG00000178826.6",
+         "ENSG00000243663.1", "ENSG00000138231.8")
+ensLookup <- gsub("\\.[0-9]*$", "", ens)
+
+res_DF1 <- na.omit(res_DF1)
+res_DF2 <- na.omit(res_DF2)
+
+genes1 <- rownames(res_DF1) 
+genes2 <- rownames(res_DF2) 
+
+annotLookup1 <- getBM(
+  mart=mart,
+  attributes=c("ensembl_transcript_id", "ensembl_gene_id",
+               "gene_biotype", "external_gene_name"),
+  filter="ensembl_gene_id",
+  values=genes1)
+
+annotLookup1 <- getBM(
+  mart=mart,
+  attributes=c("ensembl_transcript_id", "ensembl_gene_id",
+               "gene_biotype", "external_gene_name"),
+  filter="ensembl_gene_id",
+  values=genes2)
+
 # why
+
+conflicts_prefer(dplyr::select)
 
 library("pheatmap")
 
@@ -129,11 +173,14 @@ df <- as.data.frame(colData(dds)[,c("condition","geo_accession")])
 
 pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
          cluster_cols=FALSE, annotation_col=df)
+cols <- c("padj  < 0.05  & log2FoldChange > 0" = "yellow", "log2FoldChange <= 0 & padj < 0.05" = "blue", "padj > 0.05" = "red")
+
 
 volcano <- ggplot(res_DF1 , aes(x =log2FoldChange, y = -log10(padj))) +
-  geom_point(aes(color =  ifelse(padj  < 0.05  & log2FoldChange> 0 , "blue",ifelse(log2FoldChange< 0 & padj < 0.05, "red", "black")), size=.1)) +
+  geom_point(aes(color =  ifelse(padj  < 0.05  & log2FoldChange > 0 , "yellow",ifelse(log2FoldChange <= 0 & padj < 0.05, "blue", "red"))), size=.001) +
+  scale_color_manual(values = c("yellow", "red", "blue"), labels = c("Under expressed", "padj > 0.05", "Over expressed")) +
   xlim(-5,8) +
-  ylim(0,120) +
+  ylim(0,100) +
   theme_minimal() +
   labs(
     title = "condition_C9_vs_C9GC",
@@ -144,11 +191,12 @@ volcano <- ggplot(res_DF1 , aes(x =log2FoldChange, y = -log10(padj))) +
 print(volcano)
 
 
+
 volcano <- ggplot(res_DF2 , aes(x =log2FoldChange, y = -log10(padj))) +
-  geom_point(aes(color = ifelse(padj < 0.05, "red", "brown")), size = .1) +
-  scale_color_manual(values = c("brown", "red")) +
+  geom_point(aes(color =  ifelse(padj  < 0.05  & log2FoldChange > 0 , "yellow",ifelse(log2FoldChange <= 0 & padj < 0.05, "blue", "red"))), size=.001) +
+  scale_color_manual(values = c("yellow", "red", "blue"), labels = c("Under expressed", "padj > 0.05", "Over expressed")) +
   xlim(-5,5) +
-  ylim(0,100) +
+  ylim(0,75) +
   theme_minimal() +
   labs(
     title = "condition_C9KO_vs_C9GC",
@@ -171,80 +219,43 @@ boxplot(log10(assays(dds)[["cooks"]]), range=0, las=2)
 
 plotDispEsts(dds)
 
-# map dispersion REMOVED OUTLIERS
+filtered_genes1 <- filter(res_DF1, padj<0.05, log2FoldChange > 1 | log2FoldChange < 1)
+filtered_genes2 <- filter(res_DF2, padj<0.05, log2FoldChange > 1 | log2FoldChange < 1)
 
-ddsCustom <- dds
-useForMedian <- mcols(ddsCustom)$dispGeneEst > 1e-7
-medianDisp <- median(mcols(ddsCustom)$dispGeneEst[useForMedian],
-                     na.rm=TRUE)
-dispersionFunction(ddsCustom) <- function(mu) medianDisp
-ddsCustom <- estimateDispersionsMAP(ddsCustom)
+resOrdered1 <- filtered_genes1[order(abs(filtered_genes1$log2FoldChange), decreasing = T),]
+resOrdered2 <- filtered_genes2[order(abs(filtered_genes2$log2FoldChange), decreasing = T),]
 
-res1 <- results(ddsCustom, alpha=0.05,name="condition_C9_vs_C9GC")
-res2 <- results(ddsCustom, alpha=0.05,name="condition_C9KO_vs_C9GC")
+annotLookup1 <- getBM(
+  mart=mart,
+  attributes=c("ensembl_transcript_id", "ensembl_gene_id",
+               "gene_biotype", "external_gene_name"),
+  filter="ensembl_gene_id",
+  values=row.names(resOrdered1))
 
-metadata(res1)$alpha
+annotLookup2 <- getBM(
+  mart=mart,
+  attributes=c("ensembl_transcript_id", "ensembl_gene_id",
+               "gene_biotype", "external_gene_name"),
+  filter="ensembl_gene_id",
+  values=row.names(resOrdered2))
 
+resOrdered1$ensembl_gene_id <- row.names(resOrdered1)
+resOrdered2$ensembl_gene_id <- row.names(resOrdered2)
 
+rez1 <- resOrdered1 %>% inner_join(resOrdered1, annotLookup1, by = c("ensembl_gene_id" = "ensembl_gene_id")) 
+rez2 <- resOrdered2 %>% inner_join(resOrdered2, annotLookup2, by = c("ensembl_gene_id" = "ensembl_gene_id")) 
 
-metadata(res1)$filterThreshold
+genes_list <- resOrdered1$log2FoldChange
 
-plot(metadata(res1)$filterNumRej, 
-     type="b", ylab="number of rejections",
-     xlab="quantiles of filter")
-lines(metadata(res1)$lo.fit, col="red")
+names(genes_list) <- rownames(genes)
+genomic_idx1 <- match(resOrdered1$ensembl_gene_id, annotLookup1$ensembl_gene_id)
+genomic_idx2 <- match(resOrdered2$ensembl_gene_id, annotLookup2$ensemb2_gene_id)
 
-abline(v=metadata(res1)$filterTheta)
+rpkm_ordered  <- resOrdered1[ , genomic_idx1]
+rpkm_ordered  <- resOrdered2[ , genomic_idx2]
 
-resNoFilt <- results(dds, independentFiltering=FALSE)
-addmargins(table(filtering=(res1$padj < .1),
-                 noFiltering=(resNoFilt$padj < .1)))
-
-#logfolds
-
-resultsNames(ddsCustom)
-
-keep<-rowSums(counts(ddsCustom))>=10
-ddsCustom<- dds[keep,]
-
-resLFC1 <- lfcShrink(ddsCustom, coef="condition_C9_vs_C9GC", res = res1)
-
-res_DF1 <- data.frame(res1)
-sig_genes1 <- res_DF1 %>% filter(padj<0.05)
-
-
-resLFC2 <- lfcShrink(ddsCustom, coef="condition_C9KO_vs_C9GC", res = res2)
-
-res_DF2 <- data.frame(res2)
-sig_genes2 <- res_DF2 %>% filter(padj<0.05)
-
-# pvalues 
-
-resOrdered1 <- res1[order(sig_genes1$log2FoldChange),]
-
-sum(res1$padj < 0.05, na.rm=TRUE)
-
-sig_genes1<-DESeqResults(sig_genes1)
-
-
-resOrdered2 <- res2[order(sig_genes2$log2FoldChange),]
-
-sum(res2$padj < 0.05, na.rm=TRUE)
-
-sig_genes2<-DESeqResults(sig_genes2)
-
-# normal
-plotMA(resOrdered1, ylim=c(-2,2))
-
-plotMA(resOrdered2, ylim=c(-2,2))
-
-
-# why
-
-library("pheatmap")
-
-ntd <- normTransform(dds)
-
-select <- order(rowMeans(counts(dds,normalized=TRUE)),
-                decreasing=TRUE)[1:20]
-
+gse <- gseGO(genes_list,  #Gene Set Enrichment Analysis
+             ont = "BP",
+             keyType = "ENSEMBL",
+             OrgDb = "org.Hs.eg.db",
+             eps = 1e-300)
