@@ -1,4 +1,8 @@
 devtools::install_version("dbplyr", version = "2.3.4")
+BiocManager::install(version = "3.18")
+BiocManager::install(gseGO)
+BiocManager::install("clusterProfiler")
+
 
 library(stringr)
 library("DESeq2")
@@ -6,7 +10,7 @@ library("GEOquery")
 library("dplyr")
 library("org.Hs.eg.db")
 library("conflicted")
-
+library("clusterProfiler")
 
 dft <- read.delim("4th/GSE143743_bfx1299.genecounts.csv",header=T)
 df <- read.delim("4th/GSE143743_bfx1299.genecounts.csv",header=T)
@@ -136,11 +140,9 @@ ens <- c("ENSG00000100601.5", "ENSG00000178826.6",
          "ENSG00000243663.1", "ENSG00000138231.8")
 ensLookup <- gsub("\\.[0-9]*$", "", ens)
 
-res_DF1 <- na.omit(res_DF1)
-res_DF2 <- na.omit(res_DF2)
 
-genes1 <- rownames(res_DF1) 
-genes2 <- rownames(res_DF2) 
+
+# ol'code
 
 annotLookup1 <- getBM(
   mart=mart,
@@ -149,12 +151,90 @@ annotLookup1 <- getBM(
   filter="ensembl_gene_id",
   values=genes1)
 
-annotLookup1 <- getBM(
+annotLookup2 <- getBM(
   mart=mart,
   attributes=c("ensembl_transcript_id", "ensembl_gene_id",
                "gene_biotype", "external_gene_name"),
   filter="ensembl_gene_id",
   values=genes2)
+
+# new code
+res_DF1 <- na.omit(res_DF1)
+res_DF2 <- na.omit(res_DF2)
+
+genes1 <- rownames(res_DF1) 
+genes2 <- rownames(res_DF2) 
+
+genes_name <- mapIds(org.Hs.eg.db, keys = genes1, column = "SYMBOL", keytype = "ENSEMBL") #map them to gene names
+res_DF1$gene_name <- genes_name
+res_DF1$gene_name[res_DF1$gene_name == "<NA>"] <- NA
+res_DF1 <- res_DF1[!is.na(res_DF1$gene_name), ]#obtaining the genes that have a representative name
+
+res_DF1 <-res_DF1[order(-res_DF1$log2FoldChange),]
+res_DF1 <- res_DF1[res_DF1$padj<=0.05,]
+
+genes_list1<- res_DF1$log2FoldChange
+names(genes_list1) <- rownames(res_DF1)
+
+genes_name<-mapIds(org.Hs.eg.db, keys = genes2, column = "SYMBOL", keytype = "ENSEMBL") #map them to gene names
+res_DF2$gene_name <- genes_name
+res_DF2$gene_name[res_DF2$gene_name == "<NA>"] <- NA
+res_DF2 <- res_DF2[!is.na(res_DF2$gene_name), ]#obt
+
+res_DF2 <-res_DF2[order(-res_DF2$log2FoldChange),]
+res_DF2 <- res_DF2[res_DF2$padj<=0.05,]
+
+genes_list2 <- res_DF2$log2FoldChange
+names(genes_list2) <- rownames(res_DF2)
+
+gse1 <- gseGO(genes_list1,  #Gene Set Enrichment Analysis
+             ont = "BP",
+             keyType = "ENSEMBL",
+             OrgDb = "org.Hs.eg.db",
+             eps = 1e-300)
+
+gse1df <- data.frame(gse1)
+write.csv(gse1df, "condition_C9_vs_C9GC.csv")
+
+
+gse2 <- gseGO(genes_list2,  #Gene Set Enrichment Analysis
+             ont = "BP",
+             keyType = "ENSEMBL",
+             OrgDb = "org.Hs.eg.db",
+             eps = 1e-300)
+
+gse2df <- data.frame(gse1)
+
+write.csv(gse2df, "condition_C9KO_vs_C9GC.csv")
+
+
+dftn <- read.csv("SG_genes.csv",header = F)
+dftn <- dftn$V1
+conflicts_prefer(dplyr::select)
+
+library(hash)
+## hash-2.2.6 provided by Decision Patterns
+h <- hash() 
+rez_list <- list()
+
+conflicts_prefer(dplyr::intersect)
+conflicts_prefer(dplyr::filter)
+conflicts_prefer(dplyr::select)
+
+for (ind in seq(1:length(gse1df$core_enrichment))){
+  
+  ensg_<-unlist(strsplit(gse1df$core_enrichment[ind],"/"))
+  enrch_gene_names <- res_DF1 %>% filter(rownames(res_DF1) %in% ensg_) %>% select(gene_name)
+  enrch_gene_names <- enrch_gene_names$gene_name
+  if(! (1 >length(intersect(enrch_gene_names, dftn))))
+    h[[gse1df$ID[ind]]] <- intersect(enrch_gene_names, dftn)
+  else
+    rez_list <- append(rez_list, intersect(enrch_gene_names,dftn))
+
+}
+
+h <- na.omit(h)
+
 
 # why
 
