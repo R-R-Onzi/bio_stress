@@ -1,25 +1,35 @@
 import pandas as pd
 from os import walk
 import argparse
+from collections import defaultdict
+import networkx as nx
+import matplotlib
+import matplotlib.pyplot
+import csv
 
 def main(args, fantom_files: list):
 
-    results_df = pd.read_csv(args.results_file, delimiter=",",header=True)
+    results_df = pd.read_csv(args.results_file, delimiter=",",header=None) 
+    paths_df = pd.read_csv(args.path_file, delimiter=",",header=None) # go and genes
+
+    results_df = results_df.iloc[1:] #remove first row
+    paths_df = paths_df.iloc[2:,1:]
     
-    paths_df = pd.read_csv(args.path_file, delimiter=",",header=True)
+    results_df = results_df.iloc[(-results_df[5].astype(float).abs()).argsort()] # sort by biggest nes
 
-    i = 0
-    for file in listis:
-        df_trips =  pd.read_csv(f'{folder}/{file}', delimiter="\t",header=None)
-        df_trips = df_trips.iloc[4:]
-        if(i==0):
-            f_column = df_trips.iloc[:, [0]]
-            result_df = pd.concat([result_df,f_column], axis = 1)
-        f_column = df_trips.iloc[:, [1]]
-        result_df = pd.concat([result_df,f_column], axis = 1)
-        i+=1
+    uniques = []
 
-    result_df.to_csv(f"{folder.split(sep="_")[0]}.txt", index=False, header=None)
+    for j in range(len(paths_df)):
+        for a in paths_df.iloc[j, 1].split(","):
+            if(a.replace(' ', '') not in uniques):
+
+                uniques.append(a.replace(' ', ''))
+
+    with open(f"{args.results_file.replace('.csv', '').split('/')[-1]}_unique_genes.csv", 'a+') as f:
+        write = csv.writer(f)
+
+        write.writerow(uniques)
+
 
 
 if __name__  == "__main__":

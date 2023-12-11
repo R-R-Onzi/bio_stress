@@ -12,7 +12,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["--phantom_folder","/home/rubs/Downloads/fantom/hs.FANTOM.annotated", "--results_file", "condition_C9KO_vs_C9GC.csv", "--path_file", "path_genes.csv"]
+            "args": ["--phantom_folder","/home/rubs/Downloads/fantom/hs.FANTOM.annotated", "--results_file", "condition_C9_vs_C9GC.csv", "--path_file", "path_genes1.csv"]
 
         }
     ]

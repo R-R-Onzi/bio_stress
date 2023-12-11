@@ -5,3 +5,7 @@ dependencies:
   - pip:
     - pandas
     - openpyxl
+    - networkx
+    - matplotlib
+    - scipy
+    
