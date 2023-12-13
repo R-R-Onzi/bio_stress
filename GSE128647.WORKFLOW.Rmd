@@ -1,0 +1,355 @@
+```{r} 
+
+library(DESeq2)
+library(ggplot2)
+library(tidyverse)
+library(GEOquery)
+library(RColorBrewer)
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(ggridges)
+library(pheatmap)
+
+```
+```{r}
+TDP_data <- getGEO("GSE128647")
+df<- pData(phenoData(TDP_data[[1]]))
+
+original_values <- c("GFP", "WT","FL","R151A","D247A")
+replacement_values <- c("Negative control", "TDP43 wild type", "2phe_RRM1","Arg_RRM1to_Ala","Asp_RRM2_Ala")
+
+df$source_name_ch1 <- ifelse(df$source_name_ch1 %in% original_values, replacement_values[match(df$source_name_ch1, original_values)], df$source_name_ch1)
+new_df <-data.frame(Condition = df$source_name_ch1, Sample=rownames(df))
+rownames(new_df)<-df$title
+
+
+```
+
+Reading the raw Data and factoring the condition feature in the metadata.
+```{r}
+raw_data <- read.table("GSE128647_htseq_raw_counts.txt",header=T)
+colnames(raw_data) <- sub("^Sample_", "", colnames(raw_data))
+rownames(raw_data) <- raw_data$id
+raw_data <- raw_data[,-1]
+all(colnames(raw_data) %in% rownames(new_df)) #True metadata matches raw data
+all(colnames(raw_data)==rownames(new_df)) #True metadata has same order as raw data
+new_df$Condition<-factor(new_df$Condition) #factoring
+new_df$Condition<-relevel(new_df$Condition,ref="Negative control")
+str(new_df$Condition)
+
+
+```
+# Preprocessing steps:
+
+-Creating DESeq object
+
+```{r}
+dds<- DESeqDataSetFromMatrix(countData =raw_data,
+                       colData = new_df,
+                       design= ~ Condition)
+```
+- filtering out rows with low counts across all samples before normalization
+```{r}
+
+keep<-rowSums(counts(dds))>=10
+dds<- dds[keep,]
+```
+- Running DESeq and obtaining the normalized counts based on the size factor
+```{r}
+dds <- DESeq(dds)
+
+
+```
+- Results:
+Genes with p adjusted values greater than 0.05 are disregarded in the analysis
+The PCA plot highlights the contrast between samples with wild type TDP-43 and samples with mutated versions of TDP-43. Moreover, samples with mutations in RRM1 are highly similar.
+```{r}
+MA_plot <- plotMA(dds)
+
+
+
+vsd <- vst(dds, blind=FALSE) #obtaining the variation stabilizing transformations that transforms the variance to become more normal (allowing more spread) and independent from the mean 
+#PCA
+plotPCA(vsd, intgroup=c("Condition"))
+```
+```{r}
+#HeatMap similarities between samples
+
+sampledist <- dist(t(assay(vsd)))
+sampledist_matrix <-as.matrix(sampledist)
+colnames(sampledist_matrix)<- new_df$Condition
+rownames(sampledist_matrix)<- new_df$Condition
+colors<- colorRampPalette(rev(brewer.pal(9,"Blues")))(255)
+pheatmap(sampledist_matrix,clustering_distance_rows=sampledist, clustering_distance_cols=sampledist,col=colors)
+
+```
+```{r}
+library(dplyr)
+library(org.Hs.eg.db)
+# conditions vs TDP-43 wild type!!
+
+
+all_genes <-list()
+for (i in resultsNames(dds)){ #loop and get results for all conditions
+  if (i != 'Intercept'){
+    
+    res<- results(dds,name=i,alpha=0.05)
+    # shrink the result to obtain more accurate values
+    res_shrunken<-lfcShrink(dds,coef=i,type='apeglm',res=res)
+    res_shrunken_df<- data.frame(res_shrunken)
+    
+    
+    
+    
+    sig_genes<- res_shrunken_df %>% filter(padj<=0.05, abs(log2FoldChange)>1) #filtering significant genes
+    # REMOVE GENES THAT HAVE NO NAME MAPPING from the significant genes
+    genes<-rownames(sig_genes) #get gene esemble id
+    genes_name<-mapIds(org.Hs.eg.db, keys = genes, column = "SYMBOL", keytype = "ENSEMBL") #map them to gene names
+    sig_genes$gene_names<- genes_name
+    sig_genes$gene_names[sig_genes$gene_names == "<NA>"] <- NA
+    sig_genes<-sig_genes[!is.na(sig_genes$gene_names), ]
+    
+    ###
+    
+    
+    # Get the top 25 rows with the greatest absolute values of log2FoldChange
+    top_25_genes <- sig_genes %>%
+                 arrange(desc(abs(log2FoldChange))) %>%  # Arrange by absolute log2FoldChange in descending order
+                top_n(25)  # Select the top 25 genes 
+    pdf(file = paste0("plot_", i, ".pdf"), width = 10, height = 6)
+    plotCounts(dds, gene = row.names(top_25_genes)[1], intgroup = 'Condition', normalized = TRUE) # plot the most differentiated gene in each condition against all conditions
+    dev.off() #close pdf device
+    all_genes[[i]]<-list(top25 =top_25_genes,ress=res_shrunken_df)
+   
+   
+  }
+  
+}
+```
+
+```{r}
+#Volcano plots
+for (j in resultsNames(dds)){
+if (j!="Intercept"){
+
+#gene=row.names(all_genes[[j]]$res)
+  
+all_genes[[j]]$ress <- all_genes[[j]]$ress %>%
+  mutate(diffexp = ifelse(log2FoldChange > 0, "overexpressed", "underexpressed"))%>% filter(!is.na(padj))
+
+
+ volcano <-ggplot(all_genes[[j]]$ress, aes(x =log2FoldChange, y = -log10(padj),col=diffexp,label = rownames(all_genes[[j]]$ress ))) +
+
+  theme_minimal() +
+  labs(
+    title = j,
+    x = "Log2FoldChange",
+    y = "-Log10(p-value)"
+  )
+plot(volcano+geom_text(check_overlap = TRUE))
+volcano_ <-ggplot(all_genes[[j]]$ress, aes(x =log2FoldChange, y = -log10(padj),col=diffexp,main=j ))+
+  geom_point(aes(color = ifelse(padj  < 0.05  & diffexp == "overexpressed" , "blue",ifelse(diffexp == "underexpressed" & padj < 0.05, "red", "black"))), size = 2) +
+  
+  
+  scale_color_manual(values = c("black", "red",'blue'),
+                     labels = c("Not Significant", "Overexpressed (p < 0.05)", "Underexpressed (p < 0.05)"))
+   theme_minimal() +
+  labs(
+    
+    x = "Log2FoldChange",
+    y = "-Log10(p-value)"
+  )
+pdf(file = paste0("plot_volcano", j, ".pdf"), width = 10, height = 6)
+plot(volcano_)
+dev.off()
+}
+}
+
+```
+-Gene Set Enrichment Analysis
+
+```{r}
+
+ 
+for (k in resultsNames(dds)){
+if (k!="Intercept"){
+ 
+  all_genes[[k]]$ress<- all_genes[[k]]$ress[order(-all_genes[[k]]$res$log2FoldChange),]
+  genes<-rownames(all_genes[[k]]$res) #get gene esemble id
+  
+  genes_name<-mapIds(org.Hs.eg.db, keys = genes, column = "SYMBOL", keytype = "ENSEMBL") #map them to gene names
+  all_genes[[k]]$ress$gene_names<- genes_name
+  all_genes[[k]]$ress$gene_names[all_genes[[k]]$ress$gene_names == "<NA>"] <- NA
+  all_genes[[k]]$ress<-all_genes[[k]]$ress[!is.na(all_genes[[k]]$ress$gene_names), ]#obtaining the genes that have a representative name
+
+  all_genes[[k]]$ress <-all_genes[[k]]$ress[order(-all_genes[[k]]$ress$log2FoldChange),]
+  all_genes[[k]]$ress <- all_genes[[k]]$ress %>%
+  filter(padj <= 0.05)
+ 
+  genes_list<- all_genes[[k]]$ress$log2FoldChange
+  
+  names(genes_list) <- rownames(all_genes[[k]]$ress)
+  
+  
+  gse <- gseGO(genes_list,  #Gene Set Enrichment Analysis
+             ont = "BP",
+             keyType = "ENSEMBL",
+             OrgDb = "org.Hs.eg.db",
+             eps = 1e-300)
+  all_genes[[k]]$gse<- as.data.frame(gse)
+  all_genes[[k]]$gseplt<- gse
+ # gseaplot(gse)
+ # ridgeplot(gse)
+ 
+  
+}
+}
+
+
+```
+
+
+
+```{r}
+#Get known genes related to RNA STRESS GRANULES 
+SG_genes <- read.csv("SG_genes.csv",header=F)
+SG_names <- unlist(SG_genes$V1)
+
+# for one condition: match the RNA SG with the pathways of the gene set enrichment results
+common_SG <- intersect(SG_names, all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$ress$gene_names)
+for (ind in seq(1:length(all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$gse$core_enrichment))){
+    ensg_<-unlist(strsplit(all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$gse$core_enrichment[ind],"/"))
+    enrch_gene_names<- all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$ress %>% filter(rownames(all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$ress) %in% ensg_) %>% select(gene_names)
+    enrch_gene_names <- enrch_gene_names$gene_names
+   
+
+    
+    all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$pathways[[all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$gse$Description[ind]]] <- intersect(enrch_gene_names,common_SG)
+  
+}
+# for other condition
+common_SG <- intersect(SG_names, all_genes$Condition_TDP43.wild.type_vs_Negative.control$ress$gene_names)
+for (ind in seq(1:length(all_genes$Condition_TDP43.wild.type_vs_Negative.control$gse$core_enrichment))){
+  
+    ensg_<-unlist(strsplit(all_genes$Condition_TDP43.wild.type_vs_Negative.control$gse$core_enrichment[ind],"/"))
+    enrch_gene_names<- all_genes$Condition_TDP43.wild.type_vs_Negative.control$ress %>% filter(rownames(all_genes$Condition_TDP43.wild.type_vs_Negative.control$ress) %in% ensg_) %>% select(gene_names)
+    enrch_gene_names <- enrch_gene_names$gene_names
+    
+
+   
+    all_genes$Condition_TDP43.wild.type_vs_Negative.control$pathways[[all_genes$Condition_TDP43.wild.type_vs_Negative.control$gse$Description[ind]]] <- intersect(enrch_gene_names,common_SG)
+  
+}
+
+
+
+
+
+```
+
+
+
+
+
+
+```{r}
+ # Getting the Phantom files of the SG that belong in the  enriched pathways
+folder_path <-"C:/Users/DELL/Desktop/RNA proj/hs.FANTOM.annotated"
+files_in_folder <- list.files(folder_path)
+genes_phantom<-c()
+result_list <- list()
+for (k in resultsNames(dds)){
+  
+  if (k!="Intercept" && length(all_genes[[k]]$gse!=8) ){
+    selected_pathways <- names(Filter(function(x) length(x)>2, all_genes[[k]]$pathways))
+      all_genes[[k]]$pathways<- all_genes[[k]]$pathways[selected_pathways] #filtering the keys
+    unique_phantom_genes <- setdiff(unique(unlist( all_genes[[k]]$pathways)),genes_phantom) #SG genes in each condition uniquely
+    common_SG_genes <- intersect(unique(unlist( all_genes[[k]]$pathways)), genes_phantom)
+
+    
+    genes_phantom <- unique(unlist(all_genes[[k]]$pathways))
+    all_genes[[k]]$phantom <- unique_phantom_genes
+    
+    matching_files <- grep(paste("p1@(", paste(all_genes[[k]]$phantom, collapse = "|"),")(.*@.*)?\\.csv$", sep = ""), files_in_folder, value = TRUE)
+    matching_files<-setdiff(matching_files,"T071118_p1@CALR3,p1@MED26.csv" )
+    for (file in matching_files) { 
+      data <- read.csv(paste0(folder_path, "/", file),skip=1)
+      filtered_data <- data[data$Frel >= 0.98,] 
+    result_list[[sub(".*@([^\\.]+)(.*@.*)?\\.csv$", "\\1",file)]]<- filtered_data
+    }
+  }
+}
+    ```
+
+
+
+```{r}
+
+
+#Filtering the gse objects that match rna stress granules
+all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$gseplt@result <-all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$gseplt@result %>% filter(Description %in% names(all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$pathways))
+
+all_genes$Condition_TDP43.wild.type_vs_Negative.control$gseplt@result <-all_genes$Condition_TDP43.wild.type_vs_Negative.control$gseplt@result %>% filter(Description %in% names(all_genes$Condition_TDP43.wild.type_vs_Negative.control$pathways))
+
+```
+
+# This part I got the leading edge of each enriched pathway that conatined RNA stress granules however none of the leading edge was inside the ranked genes of phantom files. 
+```{r}
+enrich_genes <- list()
+for (ind in seq(1:length(all_genes$Condition_TDP43.wild.type_vs_Negative.control$gseplt@result$core_enrichment))){
+
+ensg_<-unlist(strsplit(all_genes$Condition_TDP43.wild.type_vs_Negative.control$gseplt@result$core_enrichment[ind],"/"))
+
+enrich_genes[[ind]] <-all_genes$Condition_TDP43.wild.type_vs_Negative.control$ress %>%  filter (row.names(.) %in% ensg_)
+
+}
+enrich_genes_ALL <- bind_rows(enrich_genes) %>%
+    distinct()
+SG_in_cond1 <- unlist(unique(all_genes$Condition_TDP43.wild.type_vs_Negative.control$pathways)) %>% unique()
+values_to_remove <- c("RACK1", "YBX3", "SMN1", "HELZ2")
+SG_in_cond1<- SG_in_cond1[!SG_in_cond1 %in% values_to_remove]
+
+```
+
+```{r}
+#Obtaining enriched genes (leading edge) for first condition
+enrich_genes <- list()
+for (ind in seq(1:length(all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$gseplt@result$core_enrichment))){
+
+ensg_<-unlist(strsplit(all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$gseplt@result$core_enrichment[ind],"/"))
+enrich_genes[[ind]] <-all_genes$Condition_Asp_RRM2_Ala_vs_Negative.control$ress %>%  filter (row.names(.) %in% ensg_)
+
+}
+
+
+```
+
+
+
+
+
+
+# Classifyig RNA stress granule genes found and checking which gene is common with other dataset
+```{r}
+#classifying the the Stress granules from gene enrichment as protein or RNA
+
+
+SGs <-c("RPS19", "EIF3K", "RPS6", "EIF3B", "EIF3F", "EIF3D", "PABPC1", "RPS3", "RPS24", "EIF4B",
+                 "EIF1", "EIF3H", "SLBP", "EIF3M", "EIF3I", "HNRNPD", "CNBP", "EIF4A1", "EIF3L", "EIF4H",
+                 "CSDE1", "EIF2A", "EIF3E", "HABP4", "EIF4E3", "EIF3C", "RPS11", "CLNS1A", "EIF3G", "RAN",
+                 "POP7", "SNRPF", "FBL", "RNASEL", "NCOA3", "MSI1", "MSI2", "FABP5", "EIF4G3", "CALR",
+                 "SAMD4A", "TARDBP", "RBM47", "CNOT2")
+
+# Create a dataframe with one column "sources"
+SG_df <- data.frame(sources = SGs)
+
+RNA_vs_Protein <- read.csv("C:/Users/DELL/Desktop/RNA proj/SG_RNA.csv")
+SG_df$gene_type <- ifelse(SG_df$sources %in% RNA_vs_Protein$symbol, "RNA", "Protein")
+
+```
+```{r}
+#Obtaining common SG from the two datasets
+SG_from_other <- c('MKI67', 'CDC20', 'CDK1', 'CENPF', 'KIF23', 'SMC4', 'SPAG5', 'PHLDB2', 'ALPK2', 'DSP', 'TPM1', 'DTL', 'CDK2', 'BLM', 'PDLIM5', 'APOBEC3C', 'SERPINE1', 'ZFP36', 'TRIM56', 'PARP14', 'RBM47', 'YBX3', 'RBPMS', 'SOX3', 'ANXA1', 'PARK7')
+intersect(SG_from_other,SGs)
+
+```
